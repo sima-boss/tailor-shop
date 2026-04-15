@@ -5,48 +5,13 @@ import { useRouter } from "next/navigation";
 import { createOrder, type CreateOrderInput } from "@/services/orders";
 import type { OrderType, PaymentStatus } from "@/lib/types";
 
-// ----- measurement field definitions -----
+// ----- tailoring item type -----
 
-const MEASUREMENT_GROUPS = [
-  {
-    label: "Upper Body",
-    fields: [
-      { key: "chest", label: "Chest" },
-      { key: "waist", label: "Waist" },
-      { key: "hips", label: "Hips" },
-      { key: "shoulders", label: "Shoulders" },
-      { key: "neck", label: "Neck" },
-    ],
-  },
-  {
-    label: "Arms",
-    fields: [
-      { key: "sleeve_length", label: "Sleeve Length" },
-      { key: "arm_circumference", label: "Arm Circumference" },
-      { key: "wrist", label: "Wrist" },
-    ],
-  },
-  {
-    label: "Torso",
-    fields: [
-      { key: "back_length", label: "Back Length" },
-      { key: "front_length", label: "Front Length" },
-    ],
-  },
-  {
-    label: "Lower Body",
-    fields: [
-      { key: "inseam", label: "Inseam" },
-      { key: "outseam", label: "Outseam" },
-      { key: "thigh", label: "Thigh" },
-      { key: "knee", label: "Knee" },
-      { key: "calf", label: "Calf" },
-      { key: "trouser_length", label: "Trouser Length" },
-      { key: "skirt_length", label: "Skirt Length" },
-      { key: "dress_length", label: "Dress Length" },
-    ],
-  },
-] as const;
+interface TailItem {
+  model: string;
+  qty: string;
+  unit_price: string;
+}
 
 // ----- initial form state -----
 
@@ -67,6 +32,7 @@ function getInitialState(): CreateOrderInput {
     alt_special_instructions: "",
     alt_garment_brand: "",
     alt_garment_color: "",
+    alt_quantity: "1",
     tail_garment_type: "",
     tail_fabric_details: "",
     tail_design_notes: "",
@@ -79,71 +45,8 @@ function getInitialState(): CreateOrderInput {
   };
 }
 
-// ----- reusable sub-components -----
-
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 mb-4">
-      {children}
-    </h2>
-  );
-}
-
-function Label({ htmlFor, required, children }: {
-  htmlFor: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1">
-      {children}
-      {required && <span className="text-red-500 ml-0.5">*</span>}
-    </label>
-  );
-}
-
-function Input({ id, type = "text", placeholder, value, onChange, required }: {
-  id: string;
-  type?: string;
-  placeholder?: string;
-  value: string;
-  onChange: (val: string) => void;
-  required?: boolean;
-}) {
-  return (
-    <input
-      id={id}
-      type={type}
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      required={required}
-      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                 text-gray-900 placeholder-gray-400
-                 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-    />
-  );
-}
-
-function Textarea({ id, placeholder, value, onChange, rows = 3 }: {
-  id: string;
-  placeholder?: string;
-  value: string;
-  onChange: (val: string) => void;
-  rows?: number;
-}) {
-  return (
-    <textarea
-      id={id}
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      rows={rows}
-      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                 text-gray-900 placeholder-gray-400
-                 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-    />
-  );
+function emptyTailItem(): TailItem {
+  return { model: "", qty: "1", unit_price: "" };
 }
 
 // ============================
@@ -154,22 +57,147 @@ export default function OrderForm() {
   const router = useRouter();
   const [form, setForm] = useState<CreateOrderInput>(getInitialState);
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  // ----- Alteration state -----
+  const [altQty, setAltQty] = useState(1);
+  const [altPrices, setAltPrices] = useState<string[]>([""]);
+
+  // ----- Tailoring state -----
+  const [tailItems, setTailItems] = useState<TailItem[]>([emptyTailItem()]);
+
+  // Today's date
+  const todayStr = new Date().toLocaleDateString("en-GB");
+
+  // ----- Alteration computed -----
+  const altTotal = altPrices.reduce((sum, p) => sum + (parseFloat(p) || 0), 0);
+  const altDeposit = parseFloat(form.deposit_amount) || 0;
+  const altBalance = altTotal - altDeposit;
+  const altPaymentStatus: PaymentStatus =
+    altTotal > 0 && altDeposit >= altTotal ? "fully_paid"
+    : altDeposit > 0 ? "deposit_paid"
+    : "unpaid";
+
+  // ----- Tailoring computed -----
+  const tailTotal = tailItems.reduce(
+    (sum, item) => sum + (parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0),
+    0
+  );
+  const tailDeposit = parseFloat(form.deposit_amount) || 0;
+  const tailBalance = tailTotal - tailDeposit;
+  const tailPaymentStatus: PaymentStatus =
+    tailTotal > 0 && tailDeposit >= tailTotal ? "fully_paid"
+    : tailDeposit > 0 ? "deposit_paid"
+    : "unpaid";
 
   // generic field updater
   function set<K extends keyof CreateOrderInput>(key: K, value: CreateOrderInput[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  // ----- Alteration handlers -----
+  function handleAltQtyChange(qty: number) {
+    const newQty = Math.max(1, Math.min(qty || 1, 20));
+    setAltQty(newQty);
+    setAltPrices((prev) => {
+      const copy = [...prev];
+      while (copy.length < newQty) copy.push("");
+      return copy.slice(0, newQty);
+    });
+  }
+
+  function handleAltPriceChange(idx: number, val: string) {
+    setAltPrices((prev) => { const c = [...prev]; c[idx] = val; return c; });
+  }
+
+  // ----- Tailoring handlers -----
+  function handleTailItemChange(idx: number, field: keyof TailItem, val: string) {
+    setTailItems((prev) => {
+      const c = prev.map((item, i) => i === idx ? { ...item, [field]: val } : item);
+      return c;
+    });
+  }
+
+  function addTailItem() {
+    setTailItems((prev) => [...prev, emptyTailItem()]);
+  }
+
+  function removeTailItem(idx: number) {
+    setTailItems((prev) => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
+  }
+
+  // ----- Reset -----
+  function resetForm() {
+    setForm(getInitialState());
+    setResult(null);
+    setAltQty(1);
+    setAltPrices([""]);
+    setTailItems([emptyTailItem()]);
+  }
+
+  // ----- Submit -----
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setResult(null);
 
-    const res = await createOrder(form);
+    let submitForm = { ...form };
+
+    if (form.order_type === "alteration") {
+      if (!form.customer_name.trim()) {
+        setResult({ type: "error", message: "Customer name is required." });
+        setSubmitting(false);
+        return;
+      }
+      if (altTotal <= 0) {
+        setResult({ type: "error", message: "Please enter at least one price." });
+        setSubmitting(false);
+        return;
+      }
+      submitForm = {
+        ...form,
+        total_amount: String(altTotal),
+        deposit_amount: String(altDeposit),
+        payment_status: altPaymentStatus,
+        alt_quantity: String(altQty),
+        alt_special_instructions: JSON.stringify(altPrices.map((p) => parseFloat(p) || 0)),
+      };
+    }
+
+    if (form.order_type === "tailoring") {
+      if (!form.customer_name.trim()) {
+        setResult({ type: "error", message: "Customer name is required." });
+        setSubmitting(false);
+        return;
+      }
+      if (tailTotal <= 0) {
+        setResult({ type: "error", message: "Please enter at least one item with a price." });
+        setSubmitting(false);
+        return;
+      }
+      // Derive garment_type from first item (or fallback)
+      const firstModel = tailItems[0]?.model.trim() || "Custom Tailoring";
+      // Store items as JSON in design_notes for invoice display
+      const itemsJson = JSON.stringify(
+        tailItems.map((item) => ({
+          model: item.model.trim() || "—",
+          qty: parseInt(item.qty) || 1,
+          unit_price: parseFloat(item.unit_price) || 0,
+        }))
+      );
+      submitForm = {
+        ...form,
+        total_amount: String(tailTotal),
+        deposit_amount: String(tailDeposit),
+        payment_status: tailPaymentStatus,
+        tail_garment_type: firstModel,
+        tail_design_notes: itemsJson,
+        tail_fabric_details: "",
+        tail_special_instructions: "",
+      };
+    }
+
+    const res = await createOrder(submitForm);
 
     if (res.success && res.order_id) {
       router.push(`/orders/${res.order_id}/invoice`);
@@ -181,330 +209,410 @@ export default function OrderForm() {
     setSubmitting(false);
   }
 
+  // ==============================
+  // RENDER
+  // ==============================
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
-      {/* ---------- result banner ---------- */}
+    <form onSubmit={handleSubmit} className="space-y-6">
+
+      {/* error / success banner */}
       {result && (
-        <div
-          className={`rounded-md px-4 py-3 text-sm font-medium ${
-            result.type === "success"
-              ? "bg-green-50 text-green-800 border border-green-200"
-              : "bg-red-50 text-red-800 border border-red-200"
-          }`}
-        >
+        <div className={`rounded-md px-4 py-3 text-sm font-medium ${
+          result.type === "success"
+            ? "bg-green-50 text-green-800 border border-green-200"
+            : "bg-red-50 text-red-800 border border-red-200"
+        }`}>
           {result.message}
         </div>
       )}
 
-      {/* ========== SERVICE TYPE ========== */}
-      <section>
-        <SectionHeading>Service Type</SectionHeading>
-        <div className="flex gap-4">
+      {/* ===== SERVICE TYPE ===== */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Service Type
+        </p>
+        <div className="flex gap-3">
           {(["alteration", "tailoring"] as OrderType[]).map((type) => (
             <button
               key={type}
               type="button"
               onClick={() => set("order_type", type)}
-              className={`flex-1 rounded-md border-2 py-3 text-sm font-medium capitalize transition-colors ${
+              className={`flex-1 rounded border-2 py-2 text-sm font-medium capitalize transition-colors ${
                 form.order_type === type
                   ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
               }`}
             >
               {type}
             </button>
           ))}
         </div>
-      </section>
+      </div>
 
-      {/* ========== CUSTOMER INFO ========== */}
-      <section>
-        <SectionHeading>Customer Information</SectionHeading>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="customer_name" required>Name</Label>
-            <Input
-              id="customer_name"
-              placeholder="Full name"
-              value={form.customer_name}
-              onChange={(v) => set("customer_name", v)}
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="customer_phone" required>Phone</Label>
-            <Input
-              id="customer_phone"
-              type="tel"
-              placeholder="Phone number"
-              value={form.customer_phone}
-              onChange={(v) => set("customer_phone", v)}
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="customer_email">Email</Label>
-            <Input
-              id="customer_email"
-              type="email"
-              placeholder="Optional"
-              value={form.customer_email}
-              onChange={(v) => set("customer_email", v)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="customer_notes">Notes</Label>
-            <Input
-              id="customer_notes"
-              placeholder="Customer preferences, etc."
-              value={form.customer_notes}
-              onChange={(v) => set("customer_notes", v)}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* ========== PRICING & SCHEDULE ========== */}
-      <section>
-        <SectionHeading>Pricing &amp; Schedule</SectionHeading>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <Label htmlFor="total_amount" required>Total Amount</Label>
-            <Input
-              id="total_amount"
-              type="number"
-              placeholder="0.00"
-              value={form.total_amount}
-              onChange={(v) => set("total_amount", v)}
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="deposit_amount">Deposit</Label>
-            <Input
-              id="deposit_amount"
-              type="number"
-              placeholder="0.00"
-              value={form.deposit_amount}
-              onChange={(v) => set("deposit_amount", v)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="payment_status">Payment Status</Label>
-            <select
-              id="payment_status"
-              value={form.payment_status}
-              onChange={(e) => set("payment_status", e.target.value as PaymentStatus)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                         text-gray-900 bg-white
-                         focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="unpaid">Unpaid</option>
-              <option value="deposit_paid">Deposit Paid</option>
-              <option value="fully_paid">Fully Paid</option>
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="due_date">Due Date</Label>
-            <Input
-              id="due_date"
-              type="date"
-              value={form.due_date}
-              onChange={(v) => set("due_date", v)}
-            />
-          </div>
-        </div>
-        <div className="mt-4">
-          <Label htmlFor="order_notes">Order Notes</Label>
-          <Textarea
-            id="order_notes"
-            placeholder="General notes about this order..."
-            value={form.order_notes}
-            onChange={(v) => set("order_notes", v)}
-            rows={2}
-          />
-        </div>
-      </section>
-
-      {/* ========== ALTERATION DETAILS ========== */}
+      {/* =====================================================
+          ALTERATION — paper invoice layout (UNCHANGED)
+          ===================================================== */}
       {form.order_type === "alteration" && (
-        <section>
-          <SectionHeading>Alteration Details</SectionHeading>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="alt_garment_type" required>Garment Type</Label>
-              <select
-                id="alt_garment_type"
-                value={form.alt_garment_type}
-                onChange={(e) => set("alt_garment_type", e.target.value)}
-                required
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                           text-gray-900 bg-white
-                           focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">Select garment...</option>
-                <option value="Pants">Pants</option>
-                <option value="Shirt">Shirt</option>
-                <option value="Dress">Dress</option>
-                <option value="Jacket">Jacket</option>
-                <option value="Skirt">Skirt</option>
-                <option value="Coat">Coat</option>
-                <option value="Suit">Suit</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="alt_garment_brand">Brand</Label>
-              <Input
-                id="alt_garment_brand"
-                placeholder="Optional"
-                value={form.alt_garment_brand}
-                onChange={(v) => set("alt_garment_brand", v)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="alt_garment_color">Color</Label>
-              <Input
-                id="alt_garment_color"
-                placeholder="Optional"
-                value={form.alt_garment_color}
-                onChange={(v) => set("alt_garment_color", v)}
-              />
-            </div>
-          </div>
-          <div className="mt-4">
-            <Label htmlFor="alt_description" required>Description of Work</Label>
-            <Textarea
-              id="alt_description"
-              placeholder="What alteration is needed? e.g. Shorten sleeves by 2 inches, take in waist..."
-              value={form.alt_description}
-              onChange={(v) => set("alt_description", v)}
-            />
-          </div>
-          <div className="mt-4">
-            <Label htmlFor="alt_special_instructions">Special Instructions</Label>
-            <Textarea
-              id="alt_special_instructions"
-              placeholder="Match existing stitching color, preserve original hem, etc."
-              value={form.alt_special_instructions}
-              onChange={(v) => set("alt_special_instructions", v)}
-              rows={2}
-            />
-          </div>
-        </section>
-      )}
+        <div className="border-2 border-gray-600 overflow-hidden rounded-sm">
 
-      {/* ========== TAILORING DETAILS ========== */}
-      {form.order_type === "tailoring" && (
-        <section>
-          <SectionHeading>Tailoring Details</SectionHeading>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="tail_garment_type" required>Garment Type</Label>
-              <select
-                id="tail_garment_type"
-                value={form.tail_garment_type}
-                onChange={(e) => set("tail_garment_type", e.target.value)}
-                required
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
-                           text-gray-900 bg-white
-                           focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">Select garment...</option>
-                <option value="Suit">Suit</option>
-                <option value="Shirt">Shirt</option>
-                <option value="Blouse">Blouse</option>
-                <option value="Dress">Dress</option>
-                <option value="Trousers">Trousers</option>
-                <option value="Skirt">Skirt</option>
-                <option value="Jacket">Jacket</option>
-                <option value="Coat">Coat</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="tail_fabric_details">Fabric Details</Label>
-              <Input
-                id="tail_fabric_details"
-                placeholder="Fabric type, color, customer-supplied, etc."
-                value={form.tail_fabric_details}
-                onChange={(v) => set("tail_fabric_details", v)}
-              />
-            </div>
-          </div>
-          <div className="mt-4">
-            <Label htmlFor="tail_design_notes">Design Notes</Label>
-            <Textarea
-              id="tail_design_notes"
-              placeholder="Style preferences, collar type, pocket style, reference images described..."
-              value={form.tail_design_notes}
-              onChange={(v) => set("tail_design_notes", v)}
-            />
-          </div>
-          <div className="mt-4">
-            <Label htmlFor="tail_special_instructions">Special Instructions</Label>
-            <Textarea
-              id="tail_special_instructions"
-              placeholder="Any special requests..."
-              value={form.tail_special_instructions}
-              onChange={(v) => set("tail_special_instructions", v)}
-              rows={2}
-            />
+          {/* Title */}
+          <div className="bg-gray-800 text-white text-center py-1.5 text-xs font-bold tracking-[0.25em] uppercase">
+            Cash Invoice
           </div>
 
-          {/* --- measurements grid --- */}
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-gray-800 mb-1">
-              Body Measurements
-            </h3>
-            <p className="text-xs text-gray-500 mb-4">
-              All values in centimeters. Leave blank if not needed for this garment.
-            </p>
-
-            {MEASUREMENT_GROUPS.map((group) => (
-              <div key={group.label} className="mb-5">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                  {group.label}
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {group.fields.map((f) => (
-                    <div key={f.key}>
-                      <label
-                        htmlFor={f.key}
-                        className="block text-xs text-gray-600 mb-0.5"
-                      >
-                        {f.label}
-                      </label>
-                      <input
-                        id={f.key}
-                        type="number"
-                        step="0.1"
-                        placeholder="cm"
-                        value={form[f.key as keyof CreateOrderInput] as string}
-                        onChange={(e) =>
-                          set(f.key as keyof CreateOrderInput, e.target.value)
-                        }
-                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm
-                                   text-gray-900 placeholder-gray-400
-                                   focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  ))}
-                </div>
+          {/* Customer | Order Info */}
+          <div className="grid grid-cols-2 divide-x divide-gray-500 border-b border-gray-500">
+            <div className="p-3 space-y-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-10 shrink-0 uppercase">Name</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <input
+                  type="text"
+                  required
+                  value={form.customer_name}
+                  onChange={(e) => set("customer_name", e.target.value)}
+                  placeholder="Customer name"
+                  className="flex-1 min-w-0 border-b border-gray-400 bg-transparent text-sm
+                             px-0.5 pb-0.5 focus:outline-none focus:border-gray-700 placeholder-gray-300"
+                />
               </div>
-            ))}
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-10 shrink-0 uppercase">Tel</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <input
+                  type="tel"
+                  value={form.customer_phone}
+                  onChange={(e) => set("customer_phone", e.target.value)}
+                  placeholder="Phone number"
+                  className="flex-1 min-w-0 border-b border-gray-400 bg-transparent text-sm
+                             px-0.5 pb-0.5 focus:outline-none focus:border-gray-700 placeholder-gray-300"
+                />
+              </div>
+            </div>
+            <div className="p-3 space-y-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-20 shrink-0 uppercase">Order No.</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <span className="text-sm text-gray-400 italic">Auto</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-20 shrink-0 uppercase">Received</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <span className="text-sm text-gray-700">{todayStr}</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-20 shrink-0 uppercase">Delivery</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <input
+                  type="date"
+                  value={form.due_date}
+                  onChange={(e) => set("due_date", e.target.value)}
+                  className="flex-1 min-w-0 border-b border-gray-400 bg-transparent text-sm
+                             px-0.5 pb-0.5 focus:outline-none focus:border-gray-700"
+                />
+              </div>
+            </div>
           </div>
-        </section>
+
+          {/* Table */}
+          <table className="w-full border-b border-gray-500">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-500">
+                <th className="w-14 border-r border-gray-500 py-1.5 text-center text-[11px] font-bold text-gray-600 uppercase tracking-wide">Qty</th>
+                <th className="border-r border-gray-500 px-3 py-1.5 text-left text-[11px] font-bold text-gray-600 uppercase tracking-wide">Description</th>
+                <th className="w-32 px-2 py-1.5 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide">Amount (AED)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border-r border-gray-500 px-2 py-3 align-top text-center">
+                  <input
+                    type="number" min={1} max={20} value={altQty}
+                    onChange={(e) => handleAltQtyChange(parseInt(e.target.value) || 1)}
+                    className="w-12 border border-gray-400 text-sm text-center px-1 py-0.5
+                               focus:outline-none focus:ring-1 focus:ring-gray-600 rounded-sm"
+                  />
+                </td>
+                <td className="border-r border-gray-500 px-3 py-3 align-top">
+                  <input
+                    type="text"
+                    value={form.alt_description}
+                    onChange={(e) => set("alt_description", e.target.value)}
+                    placeholder="e.g. Shorten, Take in waist, EM..."
+                    className="w-full border-b border-gray-400 bg-transparent text-sm
+                               px-0.5 pb-0.5 focus:outline-none focus:border-gray-700 placeholder-gray-300"
+                  />
+                </td>
+                <td className="px-2 py-3 align-top">
+                  <div className="space-y-1.5">
+                    {altPrices.map((price, i) => (
+                      <input
+                        key={i} type="number" step="0.5" min="0" value={price}
+                        onChange={(e) => handleAltPriceChange(i, e.target.value)}
+                        placeholder="0.00"
+                        className="w-full border border-gray-400 text-sm text-right px-1 py-0.5
+                                   focus:outline-none focus:ring-1 focus:ring-gray-600 rounded-sm"
+                      />
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Totals */}
+          <div>
+            <div className="flex border-b border-gray-400">
+              <div className="flex-1 border-r border-gray-400" />
+              <div className="w-32 flex justify-between items-center px-3 py-1.5 border-b border-gray-300">
+                <span className="text-xs text-gray-500">Total</span>
+                <span className="text-sm font-semibold text-gray-800">{altTotal.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="flex border-b border-gray-400">
+              <div className="flex-1 border-r border-gray-400" />
+              <div className="w-32 flex justify-between items-center px-3 py-1.5">
+                <span className="text-xs text-gray-500">Deposit</span>
+                <input
+                  type="number" step="0.5" min="0" value={form.deposit_amount}
+                  onChange={(e) => set("deposit_amount", e.target.value)}
+                  placeholder="0.00"
+                  className="w-20 border border-gray-400 text-sm text-right px-1 py-0.5
+                             focus:outline-none focus:ring-1 focus:ring-gray-600 rounded-sm"
+                />
+              </div>
+            </div>
+            <div className="flex">
+              <div className="flex-1 border-r border-gray-400 px-3 py-2 flex items-center">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                  altPaymentStatus === "fully_paid" ? "bg-green-100 text-green-700"
+                  : altPaymentStatus === "deposit_paid" ? "bg-yellow-100 text-yellow-700"
+                  : "bg-red-100 text-red-700"
+                }`}>
+                  {altPaymentStatus === "fully_paid" ? "Fully Paid"
+                   : altPaymentStatus === "deposit_paid" ? "Deposit Paid"
+                   : "Unpaid"}
+                </span>
+              </div>
+              <div className="w-32 flex justify-between items-center px-3 py-1.5">
+                <span className="text-xs font-semibold text-gray-700">Balance</span>
+                <span className={`text-sm font-bold ${altBalance > 0 ? "text-red-700" : "text-green-700"}`}>
+                  {altBalance.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* ========== SUBMIT ========== */}
-      <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+      {/* =====================================================
+          TAILORING — Work order layout
+          ===================================================== */}
+      {form.order_type === "tailoring" && (
+        <div className="border-2 border-gray-600 overflow-hidden rounded-sm">
+
+          {/* Title */}
+          <div className="bg-gray-800 text-white text-center py-1.5 text-xs font-bold tracking-[0.25em] uppercase">
+            Work Order
+          </div>
+
+          {/* Customer | Order Info */}
+          <div className="grid grid-cols-2 divide-x divide-gray-500 border-b border-gray-500">
+            <div className="p-3 space-y-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-10 shrink-0 uppercase">Name</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <input
+                  type="text"
+                  required
+                  value={form.customer_name}
+                  onChange={(e) => set("customer_name", e.target.value)}
+                  placeholder="Customer name"
+                  className="flex-1 min-w-0 border-b border-gray-400 bg-transparent text-sm
+                             px-0.5 pb-0.5 focus:outline-none focus:border-gray-700 placeholder-gray-300"
+                />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-10 shrink-0 uppercase">Tel</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <input
+                  type="tel"
+                  value={form.customer_phone}
+                  onChange={(e) => set("customer_phone", e.target.value)}
+                  placeholder="Phone number"
+                  className="flex-1 min-w-0 border-b border-gray-400 bg-transparent text-sm
+                             px-0.5 pb-0.5 focus:outline-none focus:border-gray-700 placeholder-gray-300"
+                />
+              </div>
+            </div>
+            <div className="p-3 space-y-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-20 shrink-0 uppercase">Order No.</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <span className="text-sm text-gray-400 italic">Auto</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-20 shrink-0 uppercase">Date</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <span className="text-sm text-gray-700">{todayStr}</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-semibold text-gray-500 w-20 shrink-0 uppercase">Delivery</span>
+                <span className="text-gray-400 text-xs shrink-0">:</span>
+                <input
+                  type="date"
+                  value={form.due_date}
+                  onChange={(e) => set("due_date", e.target.value)}
+                  className="flex-1 min-w-0 border-b border-gray-400 bg-transparent text-sm
+                             px-0.5 pb-0.5 focus:outline-none focus:border-gray-700"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Items table */}
+          <table className="w-full border-b border-gray-500">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-500">
+                <th className="border-r border-gray-500 px-3 py-1.5 text-left text-[11px] font-bold text-gray-600 uppercase tracking-wide">
+                  Type / Model
+                </th>
+                <th className="w-16 border-r border-gray-500 px-2 py-1.5 text-center text-[11px] font-bold text-gray-600 uppercase tracking-wide">
+                  Qty
+                </th>
+                <th className="w-28 border-r border-gray-500 px-2 py-1.5 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide">
+                  Unit Price
+                </th>
+                <th className="w-24 px-2 py-1.5 text-right text-[11px] font-bold text-gray-600 uppercase tracking-wide">
+                  Total
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-300">
+              {tailItems.map((item, idx) => {
+                const lineTotal =
+                  (parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0);
+                return (
+                  <tr key={idx} className="group">
+                    {/* Model */}
+                    <td className="border-r border-gray-400 px-3 py-2">
+                      <input
+                        type="text"
+                        value={item.model}
+                        onChange={(e) => handleTailItemChange(idx, "model", e.target.value)}
+                        placeholder="e.g. Kandora, Jalabiya..."
+                        className="w-full border-b border-gray-400 bg-transparent text-sm
+                                   px-0.5 pb-0.5 focus:outline-none focus:border-gray-700 placeholder-gray-300"
+                      />
+                    </td>
+                    {/* Qty */}
+                    <td className="border-r border-gray-400 px-2 py-2 text-center">
+                      <input
+                        type="number" min="1" max="99" value={item.qty}
+                        onChange={(e) => handleTailItemChange(idx, "qty", e.target.value)}
+                        className="w-12 border border-gray-400 text-sm text-center px-1 py-0.5
+                                   focus:outline-none focus:ring-1 focus:ring-gray-600 rounded-sm"
+                      />
+                    </td>
+                    {/* Unit Price */}
+                    <td className="border-r border-gray-400 px-2 py-2">
+                      <input
+                        type="number" step="0.5" min="0" value={item.unit_price}
+                        onChange={(e) => handleTailItemChange(idx, "unit_price", e.target.value)}
+                        placeholder="0.00"
+                        className="w-full border border-gray-400 text-sm text-right px-1 py-0.5
+                                   focus:outline-none focus:ring-1 focus:ring-gray-600 rounded-sm"
+                      />
+                    </td>
+                    {/* Line total + remove */}
+                    <td className="px-2 py-2 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-sm text-gray-700 tabular-nums w-16 text-right">
+                          {lineTotal > 0 ? lineTotal.toFixed(2) : "—"}
+                        </span>
+                        {tailItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeTailItem(idx)}
+                            className="text-gray-300 hover:text-red-500 transition-colors text-xs leading-none ml-1"
+                            title="Remove row"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Add item button */}
+          <div className="border-b border-gray-400 px-3 py-2">
+            <button
+              type="button"
+              onClick={addTailItem}
+              className="text-[12px] text-blue-600 hover:text-blue-800 font-medium transition-colors"
+            >
+              + Add Item
+            </button>
+          </div>
+
+          {/* Totals */}
+          <div>
+            {/* Grand total */}
+            <div className="flex border-b border-gray-400">
+              <div className="flex-1 border-r border-gray-400" />
+              <div className="w-36 flex justify-between items-center px-3 py-1.5 border-b border-gray-300">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Total</span>
+                <span className="text-sm font-semibold text-gray-800">{tailTotal.toFixed(2)}</span>
+              </div>
+            </div>
+            {/* Advance / deposit */}
+            <div className="flex border-b border-gray-400">
+              <div className="flex-1 border-r border-gray-400" />
+              <div className="w-36 flex justify-between items-center px-3 py-1.5">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Advance</span>
+                <input
+                  type="number" step="0.5" min="0" value={form.deposit_amount}
+                  onChange={(e) => set("deposit_amount", e.target.value)}
+                  placeholder="0.00"
+                  className="w-20 border border-gray-400 text-sm text-right px-1 py-0.5
+                             focus:outline-none focus:ring-1 focus:ring-gray-600 rounded-sm"
+                />
+              </div>
+            </div>
+            {/* Balance */}
+            <div className="flex">
+              <div className="flex-1 border-r border-gray-400 px-3 py-2 flex items-center">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                  tailPaymentStatus === "fully_paid" ? "bg-green-100 text-green-700"
+                  : tailPaymentStatus === "deposit_paid" ? "bg-yellow-100 text-yellow-700"
+                  : "bg-red-100 text-red-700"
+                }`}>
+                  {tailPaymentStatus === "fully_paid" ? "Fully Paid"
+                   : tailPaymentStatus === "deposit_paid" ? "Advance Paid"
+                   : "Unpaid"}
+                </span>
+              </div>
+              <div className="w-36 flex justify-between items-center px-3 py-1.5">
+                <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Balance</span>
+                <span className={`text-sm font-bold ${tailBalance > 0 ? "text-red-700" : "text-green-700"}`}>
+                  {tailBalance.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== SUBMIT ===== */}
+      <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-200">
         <button
           type="button"
-          onClick={() => {
-            setForm(getInitialState());
-            setResult(null);
-          }}
+          onClick={resetForm}
           className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium
                      text-gray-700 hover:bg-gray-50 transition-colors"
         >

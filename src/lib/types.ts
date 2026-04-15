@@ -7,10 +7,7 @@ export type UserRole = "admin" | "staff";
 export type OrderType = "alteration" | "tailoring";
 
 export type OrderStatus =
-  | "pending"
   | "in_progress"
-  | "ready_for_fitting"
-  | "fitting_done"
   | "completed"
   | "delivered"
   | "cancelled";

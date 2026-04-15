@@ -17,15 +17,7 @@ create type user_role as enum ('admin', 'staff');
 
 create type order_type as enum ('alteration', 'tailoring');
 
-create type order_status as enum (
-  'pending',
-  'in_progress',
-  'ready_for_fitting',
-  'fitting_done',
-  'completed',
-  'delivered',
-  'cancelled'
-);
+create type order_status as enum ('in_progress', 'completed', 'delivered', 'cancelled');
 
 create type payment_status as enum ('unpaid', 'deposit_paid', 'fully_paid');
 
@@ -116,12 +108,13 @@ create table orders (
   order_number    text            not null unique,
   customer_id     uuid            not null references customers(id) on delete restrict,
   order_type      order_type      not null,
-  status          order_status    not null default 'pending',
+  status          order_status    not null default 'in_progress',
   payment_status  payment_status  not null default 'unpaid',
   total_amount    numeric(10,2)   not null default 0   check (total_amount   >= 0),
   deposit_amount  numeric(10,2)   not null default 0   check (deposit_amount >= 0),
   notes           text,
   due_date        date,
+  completed_by    text check (completed_by IN ('Mumtaz', 'Shan')),
   assigned_to     uuid references profiles(id) on delete set null,
   created_by      uuid references profiles(id) on delete set null,
   created_at      timestamptz     not null default now(),
@@ -130,6 +123,11 @@ create table orders (
 
   constraint deposit_lte_total check (deposit_amount <= total_amount)
 );
+
+
+-- Auto-increment sequence for order numbers (1001, 1002, ...)
+create sequence order_number_seq start with 1001;
+alter table orders alter column order_number set default nextval('order_number_seq')::text;
 
 
 -- ----- alteration_details -----

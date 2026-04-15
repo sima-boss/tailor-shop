@@ -6,11 +6,35 @@ import { sendInvoiceEmail } from "@/services/email";
 
 // ----- helpers -----
 
-function generateOrderNumber(): string {
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10).replace(/-/g, "");
-  const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
-  return `ORD-${date}-${rand}`;
+/**
+ * Generate the next numeric order number (1001, 1002, …).
+ *
+ * Works in two phases:
+ *  • Before migration 004: DB has no sequence default, so we compute
+ *    max(order_number) across all orders and add 1. Non-numeric values
+ *    (old ORD-XXXXXX format) are ignored via parseInt.
+ *  • After migration 004: The DB sequence is the authoritative source,
+ *    but providing an explicit number is still safe — it bypasses the
+ *    sequence default and the sequence stays in sync.
+ *
+ * Race condition: if two orders are submitted simultaneously they could
+ * collide. The UNIQUE constraint on order_number will surface this as an
+ * insert error. For a single-staff shop this is acceptable.
+ */
+async function generateOrderNumber(
+  supabase: ReturnType<typeof createClient>
+): Promise<string> {
+  const { data } = await supabase
+    .from("orders")
+    .select("order_number");
+
+  let maxNum = 1000;
+  for (const row of data ?? []) {
+    const n = parseInt(row.order_number ?? "", 10);
+    if (!isNaN(n) && n > maxNum) maxNum = n;
+  }
+
+  return String(maxNum + 1);
 }
 
 function toNumber(val: string): number | null {
@@ -39,9 +63,10 @@ export interface CreateOrderInput {
   // Alteration fields
   alt_garment_type: string;
   alt_description: string;
-  alt_special_instructions: string;
+  alt_special_instructions: string; // stores item prices as JSON array for new format
   alt_garment_brand: string;
   alt_garment_color: string;
+  alt_quantity: string; // number of items (drives dynamic price inputs)
 
   // Tailoring fields
   tail_garment_type: string;
@@ -89,9 +114,6 @@ export async function createOrder(
     if (!input.customer_name.trim()) {
       return { success: false, error: "Customer name is required." };
     }
-    if (!input.customer_phone.trim()) {
-      return { success: false, error: "Customer phone is required." };
-    }
 
     const totalAmount = parseFloat(input.total_amount) || 0;
     const depositAmount = parseFloat(input.deposit_amount) || 0;
@@ -100,30 +122,21 @@ export async function createOrder(
       return { success: false, error: "Deposit cannot exceed total amount." };
     }
 
-    if (input.order_type === "alteration") {
-      if (!input.alt_garment_type.trim()) {
-        return { success: false, error: "Garment type is required for alterations." };
-      }
-      if (!input.alt_description.trim()) {
-        return { success: false, error: "Description is required for alterations." };
-      }
-    }
-
-    if (input.order_type === "tailoring") {
-      if (!input.tail_garment_type.trim()) {
-        return { success: false, error: "Garment type is required for tailoring." };
-      }
-    }
-
     // ---- 2. Find or create customer ----
     const phone = input.customer_phone.trim();
 
-    const { data: existingCustomer } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("phone", phone)
-      .is("deleted_at", null)
-      .maybeSingle();
+    // Only attempt to match an existing customer when a phone number is provided.
+    // An empty phone string would match all phone-less customers (unreliable).
+    let existingCustomer: { id: string } | null = null;
+    if (phone) {
+      const { data } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("phone", phone)
+        .is("deleted_at", null)
+        .maybeSingle();
+      existingCustomer = data;
+    }
 
     let customerId: string;
 
@@ -148,7 +161,7 @@ export async function createOrder(
     }
 
     // ---- 3. Create order ----
-    const orderNumber = generateOrderNumber();
+    const orderNumber = await generateOrderNumber(supabase);
 
     const { data: order, error: orderErr } = await supabase
       .from("orders")
@@ -156,14 +169,14 @@ export async function createOrder(
         order_number: orderNumber,
         customer_id: customerId,
         order_type: input.order_type,
-        status: "pending",
+        status: "in_progress",
         payment_status: input.payment_status,
         total_amount: totalAmount,
         deposit_amount: depositAmount,
         notes: input.order_notes.trim() || null,
         due_date: input.due_date || null,
       })
-      .select("id")
+      .select("id, order_number")
       .single();
 
     if (orderErr || !order) {
@@ -176,11 +189,13 @@ export async function createOrder(
         .from("alteration_details")
         .insert({
           order_id: order.id,
-          garment_type: input.alt_garment_type.trim(),
+          // garment_type uses description text (new format) or falls back to alt_garment_type (old)
+          garment_type: input.alt_description.trim() || input.alt_garment_type.trim() || "Alteration",
           description: input.alt_description.trim(),
           special_instructions: input.alt_special_instructions.trim() || null,
           garment_brand: input.alt_garment_brand.trim() || null,
           garment_color: input.alt_garment_color.trim() || null,
+          quantity: parseInt(input.alt_quantity) || 1,
         });
 
       if (detailErr) {
@@ -230,17 +245,25 @@ export async function createOrder(
           sendInvoiceEmail({
             to: customerEmail,
             customerName: input.customer_name.trim(),
-            orderNumber,
+            orderNumber: order.order_number,
             orderId: order.id,
             orderType: input.order_type,
             totalAmount: totalAmount,
             dueDate: input.due_date || null,
             currency: settings.currency,
             store: {
-              name: settings.store_name,
-              phone: settings.store_phone,
-              email: settings.store_email,
-              footer: settings.receipt_footer_text,
+              name:              settings.store_name,
+              nameAr:            settings.store_name_ar,
+              phone:             settings.store_phone,
+              mobile:            settings.store_mobile,
+              email:             settings.store_email,
+              location:          settings.store_location,
+              locationAr:        settings.store_location_ar,
+              shopNumber:        settings.store_shop_number,
+              shopNumberAr:      settings.store_shop_number_ar,
+              footer:            settings.receipt_footer_text,
+              liabilityNotice:   settings.store_liability_notice,
+              liabilityNoticeAr: settings.store_liability_notice_ar,
             },
           })
         )
@@ -249,14 +272,14 @@ export async function createOrder(
         });
     }
 
-    return { success: true, order_id: order.id, order_number: orderNumber };
+    return { success: true, order_id: order.id, order_number: order.order_number };
   } catch (err) {
     const message = err instanceof Error ? err.message : "An unexpected error occurred.";
     return { success: false, error: message };
   }
 }
 
-// ----- update order fields -----
+// ----- update a single order field (payment only) -----
 
 export interface UpdateOrderFieldInput {
   order_id: string;
@@ -281,6 +304,65 @@ export async function updateOrderField(
       .eq("id", input.order_id);
 
     if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "An unexpected error occurred.";
+    return { success: false, error: message };
+  }
+}
+
+// ----- update order status + completed_by atomically -----
+
+export interface UpdateOrderStatusInput {
+  order_id: string;
+  status: string;
+  completed_by: string | null; // tailor name when completing, null otherwise
+}
+
+export async function updateOrderStatus(
+  input: UpdateOrderStatusInput
+): Promise<UpdateOrderFieldResult> {
+  try {
+    const supabase = createClient();
+
+    const isCompleting = input.status === "completed";
+
+    // Full payload — includes completed_at for commission date tracking
+    const fullUpdates = {
+      status: input.status,
+      completed_by: isCompleting ? input.completed_by : null,
+      completed_at: isCompleting ? new Date().toISOString() : null,
+    };
+
+    const { error } = await supabase
+      .from("orders")
+      .update(fullUpdates)
+      .eq("id", input.order_id);
+
+    if (error) {
+      // If the completed_at column hasn't been migrated yet, retry without it.
+      // The status and completed_by will still be saved correctly.
+      const completedAtMissing =
+        error.message.includes("completed_at") ||
+        error.message.includes("does not exist") ||
+        error.message.includes("schema cache");
+
+      if (completedAtMissing) {
+        const fallbackUpdates = {
+          status: input.status,
+          completed_by: isCompleting ? input.completed_by : null,
+        };
+        const { error: err2 } = await supabase
+          .from("orders")
+          .update(fallbackUpdates)
+          .eq("id", input.order_id);
+        if (err2) return { success: false, error: err2.message };
+        return { success: true };
+      }
+
       return { success: false, error: error.message };
     }
 

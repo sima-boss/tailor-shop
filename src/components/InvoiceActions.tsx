@@ -54,7 +54,7 @@ function openWhatsApp(props: InvoiceActionsProps): void {
   const message = [
     `Hi ${props.customerName},`,
     "",
-    `Your order *${props.orderNumber}* has been confirmed.`,
+    `Your order *#${props.orderNumber}* has been confirmed.`,
     "",
     `Service Total: *${formatMoneyText(props.totalAmount, props.currency)}*`,
     `Due Date: *${formatDate(props.dueDate)}*`,

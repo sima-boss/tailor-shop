@@ -31,9 +31,17 @@ export interface InvoiceEmailData {
   currency: string;
   store: {
     name: string;
+    nameAr: string;
     phone: string;
+    mobile: string;
     email: string;
+    location: string;
+    locationAr: string;
+    shopNumber: string;
+    shopNumberAr: string;
     footer: string;
+    liabilityNotice: string;
+    liabilityNoticeAr: string;
   };
 }
 
@@ -45,24 +53,49 @@ export async function sendInvoiceEmail(data: InvoiceEmailData): Promise<void> {
   const serviceType = data.orderType === "alteration" ? "Alteration" : "Custom Tailoring";
   const fromAddress = process.env.EMAIL_FROM ?? `${data.store.name} <onboarding@resend.dev>`;
 
-  const storeName = escapeHtml(data.store.name);
-  const storePhone = escapeHtml(data.store.phone);
-  const storeEmail = escapeHtml(data.store.email);
-  const storeFooter = escapeHtml(data.store.footer);
-  const customerName = escapeHtml(data.customerName);
+  const storeName        = escapeHtml(data.store.name);
+  const storeNameAr      = escapeHtml(data.store.nameAr);
+  const storePhone       = escapeHtml(data.store.phone);
+  const storeMobile      = escapeHtml(data.store.mobile);
+  const storeEmail       = escapeHtml(data.store.email);
+  const storeLocation    = escapeHtml(data.store.location);
+  const storeLocationAr  = escapeHtml(data.store.locationAr);
+  const shopNumber       = escapeHtml(data.store.shopNumber);
+  const shopNumberAr     = escapeHtml(data.store.shopNumberAr);
+  const storeFooter      = escapeHtml(data.store.footer);
+  const liabilityNotice  = escapeHtml(data.store.liabilityNotice);
+  const liabilityNoticeAr = escapeHtml(data.store.liabilityNoticeAr);
+  const customerName     = escapeHtml(data.customerName);
 
-  // Build the store contact line for the header
-  const contactParts: string[] = [];
-  if (data.store.phone) contactParts.push(storePhone);
-  if (data.store.email) contactParts.push(storeEmail);
-  const contactLine = contactParts.length > 0
-    ? `<p style="margin:2px 0 0; color:#9ca3af; font-size:12px;">${contactParts.join(" &middot; ")}</p>`
+  // Build the header info lines
+  const nameArSuffix = storeNameAr ? ` &middot; ${storeNameAr}` : "";
+  const locationLine = (storeLocation || storeLocationAr)
+    ? `<p style="margin:2px 0 0; color:#9ca3af; font-size:12px;">${storeLocation}${storeLocation && storeLocationAr ? " &middot; " : ""}${storeLocationAr}</p>`
+    : "";
+  const shopLine = (shopNumber || shopNumberAr)
+    ? `<p style="margin:2px 0 0; color:#9ca3af; font-size:12px;">${shopNumber}${shopNumber && shopNumberAr ? " &middot; " : ""}${shopNumberAr}</p>`
+    : "";
+  const phoneLine = storePhone
+    ? `<p style="margin:2px 0 0; color:#9ca3af; font-size:12px;">Tel: ${storePhone}</p>`
+    : "";
+  const mobileLine = storeMobile
+    ? `<p style="margin:2px 0 0; color:#9ca3af; font-size:12px;">Suggestions &amp; Complaints: ${storeMobile}</p>`
+    : "";
+  const emailLine = storeEmail
+    ? `<p style="margin:2px 0 0; color:#9ca3af; font-size:12px;">${storeEmail}</p>`
+    : "";
+
+  // Build the footer liability block
+  const liabilityBlock = (liabilityNoticeAr || liabilityNotice)
+    ? `${liabilityNoticeAr ? `<p style="margin:0 0 4px; color:#374151; font-size:12px; font-weight:500; direction:rtl;">${liabilityNoticeAr}</p>` : ""}
+       ${liabilityNotice ? `<p style="margin:0 0 8px; color:#374151; font-size:12px;">${liabilityNotice}</p>` : ""}
+       <hr style="border:none; border-top:1px solid #e5e7eb; margin:8px 0;" />`
     : "";
 
   await resend.emails.send({
     from: fromAddress,
     to: data.to,
-    subject: `Order Confirmation — ${data.orderNumber}`,
+    subject: `Order Confirmation — #${data.orderNumber}`,
     html: `
 <!DOCTYPE html>
 <html>
@@ -80,8 +113,12 @@ export async function sendInvoiceEmail(data: InvoiceEmailData): Promise<void> {
           <tr>
             <td style="background-color:#111827; padding:24px 32px;">
               <h1 style="margin:0; color:#ffffff; font-size:20px; font-weight:700;">Order Confirmation</h1>
-              <p style="margin:4px 0 0; color:#9ca3af; font-size:13px;">${storeName}</p>
-              ${contactLine}
+              <p style="margin:4px 0 0; color:#ffffff; font-size:14px; font-weight:600;">${storeName}${nameArSuffix}</p>
+              ${locationLine}
+              ${shopLine}
+              ${phoneLine}
+              ${mobileLine}
+              ${emailLine}
             </td>
           </tr>
 
@@ -99,7 +136,7 @@ export async function sendInvoiceEmail(data: InvoiceEmailData): Promise<void> {
               <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb; border-radius:6px; overflow:hidden; margin-bottom:24px;">
                 <tr style="background-color:#f9fafb;">
                   <td style="padding:10px 16px; font-size:13px; color:#6b7280; font-weight:600; border-bottom:1px solid #e5e7eb;">Order Number</td>
-                  <td style="padding:10px 16px; font-size:13px; color:#111827; font-weight:600; text-align:right; border-bottom:1px solid #e5e7eb; font-family:monospace;">${data.orderNumber}</td>
+                  <td style="padding:10px 16px; font-size:13px; color:#111827; font-weight:600; text-align:right; border-bottom:1px solid #e5e7eb; font-family:monospace;">#${data.orderNumber}</td>
                 </tr>
                 <tr>
                   <td style="padding:10px 16px; font-size:13px; color:#6b7280; border-bottom:1px solid #e5e7eb;">Service Type</td>
@@ -132,9 +169,8 @@ export async function sendInvoiceEmail(data: InvoiceEmailData): Promise<void> {
           <!-- Footer -->
           <tr>
             <td style="background-color:#f9fafb; border-top:1px solid #e5e7eb; padding:16px 32px; text-align:center;">
-              <p style="margin:0; color:#9ca3af; font-size:12px;">
-                ${storeFooter}
-              </p>
+              ${liabilityBlock}
+              <p style="margin:0; color:#9ca3af; font-size:12px;">${storeFooter}</p>
             </td>
           </tr>
 

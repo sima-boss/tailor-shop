@@ -13,10 +13,10 @@ export default function NewOrderPage() {
         <div className="mx-auto max-w-3xl px-4 sm:px-6 py-4 flex items-center justify-between">
           <div>
             <Link
-              href="/"
+              href="/orders"
               className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
             >
-              &larr; Back
+              &larr; Orders
             </Link>
             <h1 className="text-xl font-bold text-gray-900 mt-1">New Order</h1>
           </div>

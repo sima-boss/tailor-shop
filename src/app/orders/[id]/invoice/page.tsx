@@ -17,10 +17,7 @@ function formatDate(dateStr: string | null): string {
 
 function statusLabel(status: OrderStatus): string {
   const map: Record<OrderStatus, string> = {
-    pending: "Pending",
     in_progress: "In Progress",
-    ready_for_fitting: "Ready for Fitting",
-    fitting_done: "Fitting Done",
     completed: "Completed",
     delivered: "Delivered",
     cancelled: "Cancelled",
@@ -182,16 +179,44 @@ export default async function InvoicePage({
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">INVOICE</h1>
-              <p className="text-gray-400 mt-1 text-sm">{settings.store_name}</p>
-              {settings.store_phone && (
-                <p className="text-gray-400 text-xs mt-0.5">{settings.store_phone}</p>
+              {/* Bilingual store name */}
+              <p className="text-white font-semibold mt-1 text-sm">
+                {settings.store_name}
+                {settings.store_name_ar && (
+                  <span> · {settings.store_name_ar}</span>
+                )}
+              </p>
+              {/* Location — English only */}
+              {settings.store_location && (
+                <p className="text-gray-400 text-xs mt-0.5">
+                  {settings.store_location}
+                </p>
               )}
+              {/* Shop number — English only */}
+              {settings.store_shop_number && (
+                <p className="text-gray-400 text-xs">
+                  {settings.store_shop_number}
+                </p>
+              )}
+              {/* Main phone */}
+              {settings.store_phone && (
+                <p className="text-gray-400 text-xs mt-0.5">
+                  Tel: {settings.store_phone}
+                </p>
+              )}
+              {/* Mobile — suggestions & complaints */}
+              {settings.store_mobile && (
+                <p className="text-gray-400 text-xs">
+                  Suggestions &amp; Complaints: {settings.store_mobile}
+                </p>
+              )}
+              {/* Email */}
               {settings.store_email && (
                 <p className="text-gray-400 text-xs">{settings.store_email}</p>
               )}
             </div>
             <div className="text-right">
-              <p className="text-lg font-mono font-semibold">{order.order_number}</p>
+              <p className="text-lg font-mono font-semibold">#{order.order_number}</p>
               <p className="text-gray-400 text-sm mt-1">{formatDate(order.created_at)}</p>
             </div>
           </div>
@@ -241,77 +266,158 @@ export default async function InvoicePage({
               Service Details
             </h2>
 
-            {alterationDetails && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Garment</span>
-                  <span className="text-gray-900 font-medium">
-                    {alterationDetails.garment_type}
-                    {alterationDetails.garment_color && ` — ${alterationDetails.garment_color}`}
-                    {alterationDetails.garment_brand && ` (${alterationDetails.garment_brand})`}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Quantity</span>
-                  <span className="text-gray-900">{alterationDetails.quantity}</span>
-                </div>
-                <div className="mt-2">
-                  <p className="text-xs text-gray-500 mb-1">Description</p>
-                  <p className="text-sm text-gray-800 bg-gray-50 rounded-md p-3">
-                    {alterationDetails.description}
-                  </p>
-                </div>
-                {alterationDetails.special_instructions && (
-                  <div className="mt-2">
-                    <p className="text-xs text-gray-500 mb-1">Special Instructions</p>
-                    <p className="text-sm text-gray-800 bg-gray-50 rounded-md p-3">
-                      {alterationDetails.special_instructions}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+            {alterationDetails && (() => {
+              // Detect new format: special_instructions is a JSON price array
+              let itemPrices: number[] | null = null;
+              if (alterationDetails.special_instructions) {
+                try {
+                  const parsed = JSON.parse(alterationDetails.special_instructions);
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    itemPrices = parsed.map((p) => Number(p) || 0);
+                  }
+                } catch {
+                  // old format — plain text
+                }
+              }
 
-            {tailoringDetails && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Garment</span>
-                  <span className="text-gray-900 font-medium">
-                    {tailoringDetails.garment_type}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Quantity</span>
-                  <span className="text-gray-900">
-                    {tailoringDetails.quantity}
-                  </span>
-                </div>
-                {tailoringDetails.fabric_details ? (
+              return (
+                <div className="space-y-2">
+                  {/* Garment type — only show if different from description (old format) */}
+                  {alterationDetails.garment_type !== alterationDetails.description && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Garment</span>
+                      <span className="text-gray-900 font-medium">
+                        {alterationDetails.garment_type}
+                        {alterationDetails.garment_color && ` — ${alterationDetails.garment_color}`}
+                        {alterationDetails.garment_brand && ` (${alterationDetails.garment_brand})`}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Fabric</span>
-                    <span className="text-gray-900">
-                      {tailoringDetails.fabric_details}
-                    </span>
+                    <span className="text-gray-500">Description</span>
+                    <span className="text-gray-900 font-medium">{alterationDetails.description}</span>
                   </div>
-                ) : null}
-                {tailoringDetails.design_notes ? (
-                  <div className="mt-2">
-                    <p className="text-xs text-gray-500 mb-1">Design Notes</p>
-                    <p className="text-sm text-gray-800 bg-gray-50 rounded-md p-3">
-                      {tailoringDetails.design_notes}
-                    </p>
+
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Quantity</span>
+                    <span className="text-gray-900">{alterationDetails.quantity}</span>
                   </div>
-                ) : null}
-                {tailoringDetails.special_instructions ? (
-                  <div className="mt-2">
-                    <p className="text-xs text-gray-500 mb-1">Special Instructions</p>
-                    <p className="text-sm text-gray-800 bg-gray-50 rounded-md p-3">
-                      {tailoringDetails.special_instructions}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            )}
+
+                  {/* Item prices (new format) */}
+                  {itemPrices && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-500 mb-1">Item Prices</p>
+                      <div className="border border-gray-100 rounded-md overflow-hidden">
+                        {itemPrices.map((price, i) => (
+                          <div
+                            key={i}
+                            className="flex justify-between text-sm px-3 py-1.5 border-b border-gray-100 last:border-0 bg-gray-50"
+                          >
+                            <span className="text-gray-500">Item {i + 1}</span>
+                            <span className="text-gray-900">{formatMoney(price, settings.currency)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Special instructions (old format — plain text) */}
+                  {!itemPrices && alterationDetails.special_instructions && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-500 mb-1">Special Instructions</p>
+                      <p className="text-sm text-gray-800 bg-gray-50 rounded-md p-3">
+                        {alterationDetails.special_instructions}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {tailoringDetails && (() => {
+              // Detect new format: design_notes is a JSON items array
+              type TailItem = { model: string; qty: number; unit_price: number };
+              let tailItems: TailItem[] | null = null;
+              if (tailoringDetails.design_notes) {
+                try {
+                  const parsed = JSON.parse(tailoringDetails.design_notes as string);
+                  if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === "object") {
+                    tailItems = parsed as TailItem[];
+                  }
+                } catch {
+                  // old format — plain text
+                }
+              }
+
+              return (
+                <div className="space-y-2">
+                  {/* New format: items table */}
+                  {tailItems ? (
+                    <div>
+                      <div className="border border-gray-100 rounded-md overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Type / Model</th>
+                              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide w-14">Qty</th>
+                              <th className="px-2 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Unit Price</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tailItems.map((item, i) => (
+                              <tr key={i} className="border-b border-gray-100 last:border-0">
+                                <td className="px-3 py-2 text-gray-900 font-medium">{item.model || "—"}</td>
+                                <td className="px-2 py-2 text-center text-gray-700">{item.qty}</td>
+                                <td className="px-2 py-2 text-right text-gray-700">{formatMoney(item.unit_price, settings.currency)}</td>
+                                <td className="px-3 py-2 text-right text-gray-900 font-medium">{formatMoney(item.qty * item.unit_price, settings.currency)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Old format: plain fields */
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Garment</span>
+                        <span className="text-gray-900 font-medium">{tailoringDetails.garment_type}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Quantity</span>
+                        <span className="text-gray-900">{tailoringDetails.quantity}</span>
+                      </div>
+                      {tailoringDetails.fabric_details ? (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Fabric</span>
+                          <span className="text-gray-900">{tailoringDetails.fabric_details as string}</span>
+                        </div>
+                      ) : null}
+                      {tailoringDetails.design_notes ? (
+                        <div className="mt-2">
+                          <p className="text-xs text-gray-500 mb-1">Design Notes</p>
+                          <p className="text-sm text-gray-800 bg-gray-50 rounded-md p-3">
+                            {tailoringDetails.design_notes as string}
+                          </p>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+
+                  {/* Special instructions (old format only) */}
+                  {tailoringDetails.special_instructions ? (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-500 mb-1">Special Instructions</p>
+                      <p className="text-sm text-gray-800 bg-gray-50 rounded-md p-3">
+                        {tailoringDetails.special_instructions as string}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
           </div>
 
           {/* ----- measurements (tailoring only) ----- */}
@@ -377,6 +483,22 @@ export default async function InvoicePage({
 
         {/* footer */}
         <div className="bg-gray-50 border-t border-gray-200 px-8 py-4 text-center">
+          {/* Liability notice — bilingual, Arabic first */}
+          {(settings.store_liability_notice_ar || settings.store_liability_notice) && (
+            <>
+              {settings.store_liability_notice_ar && (
+                <p className="text-xs text-gray-700 font-medium" dir="rtl">
+                  {settings.store_liability_notice_ar}
+                </p>
+              )}
+              {settings.store_liability_notice && (
+                <p className="text-xs text-gray-700 mt-1">
+                  {settings.store_liability_notice}
+                </p>
+              )}
+              <hr className="border-gray-200 my-2" />
+            </>
+          )}
           <p className="text-xs text-gray-500">
             {settings.receipt_footer_text}
           </p>

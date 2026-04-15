@@ -1,84 +1,78 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import OrderFilters from "@/components/OrderFilters";
-import OrdersTable, { type OrderRow } from "@/components/OrdersTable";
+import OrdersView, { type OrderRow } from "@/components/OrdersView";
 import type { OrderType, OrderStatus, PaymentStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Orders — Tailor Shop" };
 
-export default async function OrdersPage({
-  searchParams,
-}: {
-  searchParams: { payment?: string; type?: string; q?: string };
-}) {
+export default async function OrdersPage() {
   const supabase = createClient();
 
-  // Build query — includes `status` for inline editing
-  let query = supabase
+  // --- attempt 1: fetch WITH completed_by ---
+  const withCol = await supabase
     .from("orders")
     .select(
-      "id, order_number, order_type, status, payment_status, due_date, created_at, customers(name, phone)"
+      "id, order_number, order_type, status, payment_status, due_date, completed_by, created_at, customers(name, phone)"
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  if (searchParams.payment) {
-    query = query.eq("payment_status", searchParams.payment);
+  // If the column doesn't exist yet, fall back to a query without it.
+  // The Orders page loads normally; the Completed By feature is hidden until
+  // the migration is applied and the page is refreshed.
+  const columnMissing =
+    withCol.error != null &&
+    (withCol.error.message.includes("completed_by") ||
+      withCol.error.message.includes("does not exist") ||
+      withCol.error.message.includes("schema cache"));
+
+  // Use unknown[] so both query shapes (with/without completed_by) are assignable
+  let rawOrders: unknown[] | null = withCol.data as unknown[] | null;
+  let fetchError: { message: string } | null = withCol.error;
+  let completedByReady = true;
+
+  if (columnMissing) {
+    completedByReady = false;
+    const withoutCol = await supabase
+      .from("orders")
+      .select(
+        "id, order_number, order_type, status, payment_status, due_date, created_at, customers(name, phone)"
+      )
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+    rawOrders = withoutCol.data as unknown[] | null;
+    fetchError = withoutCol.error;
   }
-  if (searchParams.type) {
-    query = query.eq("order_type", searchParams.type);
-  }
 
-  const { data: orders, error } = await query;
-
-  // Normalize rows for the client component
-  let rows: OrderRow[] = (orders ?? []).map((o) => {
-    const customer = o.customers as unknown as
-      | { name: string; phone: string }
-      | null;
-
+  const rows: OrderRow[] = ((rawOrders ?? []) as Record<string, unknown>[]).map((o) => {
+    const customer = o.customers as { name: string; phone: string } | null;
     return {
-      id: o.id,
-      order_number: o.order_number,
+      id: o.id as string,
+      order_number: o.order_number as string,
       order_type: o.order_type as OrderType,
       status: o.status as OrderStatus,
       payment_status: o.payment_status as PaymentStatus,
-      due_date: o.due_date,
+      due_date: (o.due_date as string | null) ?? null,
+      completed_by: completedByReady ? ((o.completed_by as string | null) ?? null) : null,
       customer_name: customer?.name ?? "—",
       customer_phone: customer?.phone ?? "—",
     };
   });
 
-  // Text search — matches against order number, customer name, or phone
-  const q = searchParams.q?.trim().toLowerCase();
-  if (q) {
-    rows = rows.filter(
-      (r) =>
-        r.order_number.toLowerCase().includes(q) ||
-        r.customer_name.toLowerCase().includes(q) ||
-        r.customer_phone.toLowerCase().includes(q)
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* header */}
       <header className="bg-white border-b border-gray-200">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 flex items-center justify-between">
           <div>
-            <Link
-              href="/dashboard"
-              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
-            >
+            <Link href="/dashboard" className="text-sm text-blue-600 hover:text-blue-800 transition-colors">
               &larr; Home
             </Link>
             <h1 className="text-xl font-bold text-gray-900 mt-1">Orders</h1>
           </div>
           <Link
             href="/orders/new"
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white
-                       hover:bg-blue-700 transition-colors text-center"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
           >
             + New Order
           </Link>
@@ -86,29 +80,12 @@ export default async function OrdersPage({
       </header>
 
       <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
-        {/* filters */}
-        <div className="mb-4">
-          <OrderFilters />
-        </div>
-
-        {/* table card */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          {error ? (
-            <div className="px-6 py-12 text-center">
-              <p className="text-sm text-red-600">
-                Failed to load orders: {error.message}
-              </p>
-            </div>
-          ) : (
-            <OrdersTable initialOrders={rows} />
-          )}
-        </div>
-
-        {/* count */}
-        {rows.length > 0 && (
-          <p className="mt-3 text-xs text-gray-500 text-right">
-            {rows.length} order{rows.length !== 1 && "s"}
-          </p>
+        {fetchError ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-6 py-12 text-center">
+            <p className="text-sm text-red-600 font-medium">Failed to load orders: {fetchError.message}</p>
+          </div>
+        ) : (
+          <OrdersView allOrders={rows} completedByReady={completedByReady} />
         )}
       </main>
     </div>
