@@ -61,28 +61,38 @@ export default async function OrdersPage() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div>
-            <Link href="/dashboard" className="text-sm text-blue-600 hover:text-blue-800 transition-colors">
-              &larr; Home
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center text-sm text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              <span aria-hidden="true" className="mr-1">&larr;</span> Home
             </Link>
-            <h1 className="text-xl font-bold text-gray-900 mt-1">Orders</h1>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 mt-1">
+              Orders
+            </h1>
           </div>
           <Link
             href="/orders/new"
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white
+                       shadow-sm transition-all hover:bg-slate-800 hover:shadow
+                       focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2
+                       active:scale-[0.98]"
           >
-            + New Order
+            <span aria-hidden="true">+</span> New Order
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6">
+      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6 sm:py-8">
         {fetchError ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-6 py-12 text-center">
-            <p className="text-sm text-red-600 font-medium">Failed to load orders: {fetchError.message}</p>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 px-6 py-16 text-center">
+            <p className="text-sm text-red-600 font-medium">
+              Failed to load orders: {fetchError.message}
+            </p>
           </div>
         ) : (
           <OrdersView allOrders={rows} completedByReady={completedByReady} />

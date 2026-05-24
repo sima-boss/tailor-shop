@@ -381,33 +381,40 @@ export default function DashboardClient({ allOrders, currency, role }: Props) {
   // Render
   // ============================================================
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
 
       {/* ---- header ---- */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-          <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">
+              Dashboard
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">Danaty Fashion</p>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <Link
               href="/orders"
-              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium
-                         text-gray-700 hover:bg-gray-50 transition-colors text-center"
+              className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium
+                         text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-400 text-center"
             >
               View Orders
             </Link>
             <Link
               href="/orders/new"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white
-                         hover:bg-blue-700 transition-colors text-center"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white
+                         shadow-sm transition-all hover:bg-slate-800 hover:shadow
+                         focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2
+                         active:scale-[0.98]"
             >
-              + New Order
+              <span aria-hidden="true">+</span> New Order
             </Link>
             {/* Sign-out: form action calls the server action directly */}
             <form action={logoutAction}>
               <button
                 type="submit"
-                className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium
-                           text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium
+                           text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700 hover:border-slate-300"
               >
                 Sign Out
               </button>

@@ -2,6 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Base typography & rendering polish
+   ============================================================ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    /* Inter looks crisper with these OpenType features enabled */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    color: #0f172a; /* slate-900 */
+    background-color: #f8fafc; /* slate-50 */
+  }
+
+  /* Subtle text selection that matches the brand */
+  ::selection {
+    background-color: #dbeafe; /* blue-100 */
+    color: #1e3a8a;            /* blue-900 */
+  }
+
+  /* Headings — slightly tighter tracking by default */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ============================================================
+   Reusable card primitive (kept tiny — purely visual)
+   ============================================================ */
+@layer components {
+  .ui-card {
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm;
+  }
+}
+
+/* ============================================================
+   Print styles (unchanged)
+   ============================================================ */
 @media print {
   body {
     background: white !important;
